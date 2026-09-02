@@ -1,12 +1,19 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import HomeScreen from "./screens/HomeScreen";
 import AddPlantScreen from "./screens/AddPlantScreen";
+import { initDb } from "./utils/db";
 
 const Stack = createNativeStackNavigator();
 
 export default function App() {
+  useEffect(() => {
+    initDb().catch((err) =>
+      console.error("Failed to initialize SQLite database:", err)
+    );
+  }, []);
+
   return (
     <NavigationContainer>
       <Stack.Navigator
