@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -8,14 +8,17 @@ import {
   StatusBar,
   FlatList,
   ActivityIndicator,
+  Animated,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
-import { getPlants } from "../utils/storage";
+import { getPlants, markAsWatered } from "../utils/storage";
 import { PLANT_LOOKUP } from "../data/plantLookup";
 
 export default function HomeScreen({ navigation }) {
   const [plants, setPlants] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [toastMessage, setToastMessage] = useState(null);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   // Fetch all plants from storage whenever screen comes into focus
   useFocusEffect(
@@ -44,6 +47,41 @@ export default function HomeScreen({ navigation }) {
       };
     }, [])
   );
+
+  /**
+   * Show toast notification feedback.
+   */
+  const showToast = (message) => {
+    setToastMessage(message);
+    Animated.sequence([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.delay(2400),
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setToastMessage(null);
+    });
+  };
+
+  /**
+   * Handle 'Mark as Watered' action for a plant.
+   */
+  const handleMarkAsWatered = async (plant) => {
+    try {
+      const updatedList = await markAsWatered(plant.id);
+      setPlants(updatedList);
+      showToast(`💧 ${plant.name} marked as watered!`);
+    } catch (error) {
+      console.error("Failed to mark plant as watered:", error);
+    }
+  };
 
   /**
    * Calculate live days left until next watering date.
@@ -76,6 +114,7 @@ export default function HomeScreen({ navigation }) {
         cardBg: "#FFFFFF",
         countdownText: `Water in ${daysLeft} days`,
         statusLabel: "Healthy",
+        waterButtonBg: "#2D6A4F",
       };
     } else if (daysLeft >= 0) {
       return {
@@ -85,6 +124,7 @@ export default function HomeScreen({ navigation }) {
         cardBg: "#FFFBEB",
         countdownText: daysLeft === 0 ? "Water today!" : `Water in ${daysLeft} day`,
         statusLabel: "Due Soon",
+        waterButtonBg: "#D97706",
       };
     } else {
       const overdueDays = Math.abs(daysLeft);
@@ -95,6 +135,7 @@ export default function HomeScreen({ navigation }) {
         cardBg: "#FEF2F2",
         countdownText: `Overdue by ${overdueDays} day${overdueDays === 1 ? "" : "s"}`,
         statusLabel: "Overdue",
+        waterButtonBg: "#DC2626",
       };
     }
   };
@@ -150,6 +191,14 @@ export default function HomeScreen({ navigation }) {
               {theme.countdownText}
             </Text>
           </View>
+
+          <TouchableOpacity
+            style={[styles.waterButton, { backgroundColor: theme.waterButtonBg }]}
+            activeOpacity={0.8}
+            onPress={() => handleMarkAsWatered(item)}
+          >
+            <Text style={styles.waterButtonText}>💧 Mark Watered</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -158,6 +207,13 @@ export default function HomeScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
+
+      {/* Toast Notification Banner */}
+      {toastMessage && (
+        <Animated.View style={[styles.toastContainer, { opacity: fadeAnim }]}>
+          <Text style={styles.toastText}>{toastMessage}</Text>
+        </Animated.View>
+      )}
 
       {/* Screen Header */}
       <View style={styles.header}>
@@ -216,10 +272,32 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#F4F7F4",
   },
+  toastContainer: {
+    position: "absolute",
+    top: 60,
+    left: 20,
+    right: 20,
+    backgroundColor: "#1B4332",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    zIndex: 999,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  toastText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "700",
+  },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justify.content: "space-between",
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 16,
@@ -256,7 +334,7 @@ const styles = StyleSheet.create({
   centerContainer: {
     flex: 1,
     alignItems: "center",
-    justifyContent: "center",
+    justify.content: "center",
     paddingHorizontal: 32,
   },
   loadingText: {
@@ -315,7 +393,7 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justify.content: "space-between",
     marginBottom: 10,
   },
   titleContainer: {
@@ -354,14 +432,29 @@ const styles = StyleSheet.create({
   cardFooter: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-start",
+    justify.content: "space-between",
   },
   countdownPill: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
   },
   countdownPillText: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  waterButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  waterButtonText: {
+    color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "700",
   },
