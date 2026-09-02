@@ -75,9 +75,15 @@ export default function HomeScreen({ navigation }) {
    */
   const handleMarkAsWatered = async (plant) => {
     try {
-      const updatedList = await markAsWatered(plant.id);
-      setPlants(updatedList);
-      showToast(`💧 ${plant.name} marked as watered!`);
+      await markAsWatered(plant.id);
+      // Explicitly re-fetch fresh plant records directly from SQLite
+      const freshPlants = await getPlants();
+      setPlants(freshPlants);
+
+      const updatedPlant = freshPlants.find((p) => String(p.id) === String(plant.id));
+      const remainingDays = updatedPlant ? getDaysLeft(updatedPlant.nextWaterDate) : 0;
+
+      showToast(`💧 ${plant.name} marked as watered! (Next in ${remainingDays} days)`);
     } catch (error) {
       console.error("Failed to mark plant as watered:", error);
     }
@@ -89,16 +95,18 @@ export default function HomeScreen({ navigation }) {
   const getDaysLeft = (nextWaterDateIso) => {
     if (!nextWaterDateIso) return 0;
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
     const targetDate = new Date(nextWaterDateIso);
-    const target = new Date(
+    if (isNaN(targetDate.getTime())) return 0;
+
+    const targetMidnight = new Date(
       targetDate.getFullYear(),
       targetDate.getMonth(),
       targetDate.getDate()
     );
 
-    const diffTime = target.getTime() - today.getTime();
+    const diffTime = targetMidnight.getTime() - todayMidnight.getTime();
     return Math.round(diffTime / (1000 * 60 * 60 * 24));
   };
 

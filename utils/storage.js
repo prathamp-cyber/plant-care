@@ -118,25 +118,37 @@ export const deletePlant = async (id) => {
 export const markAsWatered = async (plantId) => {
   try {
     const db = await ensureDbReady();
-    const plantRow = await db.getFirstAsync("SELECT * FROM plants WHERE id = ?", [plantId]);
+    const strId = String(plantId);
+    
+    // Find plant record by ID matching both text and numeric types
+    const plantRow = await db.getFirstAsync(
+      "SELECT * FROM plants WHERE id = ? OR CAST(id AS TEXT) = ?",
+      [strId, strId]
+    );
+
     if (!plantRow) {
       console.warn("Plant not found for markAsWatered:", plantId);
       return await getPlants();
     }
 
-    const intervalDays = plantRow.watering_interval_days || 7;
+    const intervalDays = parseInt(plantRow.watering_interval_days, 10) || 7;
     const now = new Date();
     const lastWateredDate = now.toISOString();
 
     const nextDate = new Date(now.getTime() + intervalDays * 24 * 60 * 60 * 1000);
     const nextWaterDate = nextDate.toISOString();
 
-    // Update plant record
+    console.log(`[markAsWatered] Plant: "${plantRow.name}" (ID: ${strId})`);
+    console.log(`  - Interval: ${intervalDays} days`);
+    console.log(`  - Last Watered: ${lastWateredDate}`);
+    console.log(`  - Recalculated Next Water: ${nextWaterDate}`);
+
+    // Update plant record in SQLite
     await db.runAsync(
       `UPDATE plants 
        SET last_watered_date = ?, next_water_date = ? 
-       WHERE id = ?`,
-      [lastWateredDate, nextWaterDate, plantId]
+       WHERE id = ? OR CAST(id AS TEXT) = ?`,
+      [lastWateredDate, nextWaterDate, strId, strId]
     );
 
     // Insert entry into watering_logs table
@@ -144,13 +156,15 @@ export const markAsWatered = async (plantId) => {
     await db.runAsync(
       `INSERT INTO watering_logs (id, plant_id, watered_on) 
        VALUES (?, ?, ?)`,
-      [logId, plantId, lastWateredDate]
+      [logId, strId, lastWateredDate]
     );
 
-    return await getPlants();
+    // Fresh re-fetch from database to guarantee non-stale state
+    const freshPlants = await getPlants();
+    return freshPlants;
   } catch (error) {
     console.error("Error marking plant as watered in SQLite:", error);
-    return [];
+    return await getPlants();
   }
 };
 
