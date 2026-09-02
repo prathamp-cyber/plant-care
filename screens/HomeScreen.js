@@ -1,26 +1,212 @@
-import React from "react";
-import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, StatusBar } from "react-native";
+import React, { useState, useCallback } from "react";
+import {
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
+  SafeAreaView,
+  StatusBar,
+  FlatList,
+  ActivityIndicator,
+} from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
+import { getPlants } from "../utils/storage";
+import { PLANT_LOOKUP } from "../data/plantLookup";
 
 export default function HomeScreen({ navigation }) {
+  const [plants, setPlants] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch all plants from storage whenever screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+      const fetchPlantsData = async () => {
+        setLoading(true);
+        try {
+          const storedPlants = await getPlants();
+          if (isMounted) {
+            setPlants(storedPlants);
+          }
+        } catch (error) {
+          console.error("Failed to load plants:", error);
+        } finally {
+          if (isMounted) {
+            setLoading(false);
+          }
+        }
+      };
+
+      fetchPlantsData();
+
+      return () => {
+        isMounted = false;
+      };
+    }, [])
+  );
+
+  /**
+   * Calculate live days left until next watering date.
+   */
+  const getDaysLeft = (nextWaterDateIso) => {
+    if (!nextWaterDateIso) return 0;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const targetDate = new Date(nextWaterDateIso);
+    const target = new Date(
+      targetDate.getFullYear(),
+      targetDate.getMonth(),
+      targetDate.getDate()
+    );
+
+    const diffTime = target.getTime() - today.getTime();
+    return Math.round(diffTime / (1000 * 60 * 60 * 24));
+  };
+
+  /**
+   * Get theme colors and status strings based on daysLeft.
+   */
+  const getStatusTheme = (daysLeft) => {
+    if (daysLeft > 2) {
+      return {
+        borderColor: "#2D6A4F",
+        badgeBg: "#E2F1E7",
+        badgeText: "#1B4332",
+        cardBg: "#FFFFFF",
+        countdownText: `Water in ${daysLeft} days`,
+        statusLabel: "Healthy",
+      };
+    } else if (daysLeft >= 0) {
+      return {
+        borderColor: "#D97706",
+        badgeBg: "#FEF3C7",
+        badgeText: "#92400E",
+        cardBg: "#FFFBEB",
+        countdownText: daysLeft === 0 ? "Water today!" : `Water in ${daysLeft} day`,
+        statusLabel: "Due Soon",
+      };
+    } else {
+      const overdueDays = Math.abs(daysLeft);
+      return {
+        borderColor: "#DC2626",
+        badgeBg: "#FEE2E2",
+        badgeText: "#991B1B",
+        cardBg: "#FEF2F2",
+        countdownText: `Overdue by ${overdueDays} day${overdueDays === 1 ? "" : "s"}`,
+        statusLabel: "Overdue",
+      };
+    }
+  };
+
+  /**
+   * Get category label (Indoor / Farm / Custom).
+   */
+  const getCategory = (plant) => {
+    if (plant.category) return plant.category;
+    if (plant.species && PLANT_LOOKUP[plant.species]) {
+      return PLANT_LOOKUP[plant.species].category;
+    }
+    return plant.species === "custom" ? "Custom" : "Indoor";
+  };
+
+  const renderPlantItem = ({ item }) => {
+    const daysLeft = getDaysLeft(item.nextWaterDate);
+    const theme = getStatusTheme(daysLeft);
+    const category = getCategory(item);
+
+    return (
+      <View
+        style={[
+          styles.plantCard,
+          { borderColor: theme.borderColor, backgroundColor: theme.cardBg },
+        ]}
+      >
+        <View style={styles.cardHeader}>
+          <View style={styles.titleContainer}>
+            <Text style={styles.plantEmoji}>
+              {category === "Farm" ? "🌾" : category === "Custom" ? "✨" : "🪴"}
+            </Text>
+            <Text style={styles.plantName} numberOfLines={1}>
+              {item.name}
+            </Text>
+          </View>
+          <View style={[styles.categoryBadge, { backgroundColor: theme.badgeBg }]}>
+            <Text style={[styles.categoryBadgeText, { color: theme.badgeText }]}>
+              {category}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.cardBody}>
+          <Text style={styles.intervalText}>
+            ⏱️ Interval: Every {item.wateringIntervalDays} days
+          </Text>
+        </View>
+
+        <View style={styles.cardFooter}>
+          <View style={[styles.countdownPill, { backgroundColor: theme.badgeBg }]}>
+            <Text style={[styles.countdownPillText, { color: theme.badgeText }]}>
+              {theme.countdownText}
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      <View style={styles.content}>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>🌿 Phase 1 Placeholder</Text>
-        </View>
-        
-        <Text style={styles.title}>Plant Care Reminder</Text>
-        <Text style={styles.subtitle}>Keep your indoor & farm plants thriving</Text>
 
-        <TouchableOpacity 
-          style={styles.button}
+      {/* Screen Header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.headerTitle}>Plant Care</Text>
+          <Text style={styles.headerSubtitle}>
+            {plants.length} {plants.length === 1 ? "plant" : "plants"} tracked
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          style={styles.addButton}
           activeOpacity={0.8}
           onPress={() => navigation.navigate("AddPlant")}
         >
-          <Text style={styles.buttonText}>+ Add New Plant</Text>
+          <Text style={styles.addButtonText}>+ Add Plant</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Main Content Area */}
+      {loading ? (
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color="#2D6A4F" />
+          <Text style={styles.loadingText}>Loading your plants...</Text>
+        </View>
+      ) : plants.length === 0 ? (
+        <View style={styles.centerContainer}>
+          <Text style={styles.emptyEmoji}>🌱</Text>
+          <Text style={styles.emptyTitle}>No plants added yet</Text>
+          <Text style={styles.emptySubtitle}>
+            Tap + to add your first indoor or farm plant!
+          </Text>
+          <TouchableOpacity
+            style={styles.emptyAddButton}
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate("AddPlant")}
+          >
+            <Text style={styles.emptyAddButtonText}>+ Add First Plant</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <FlatList
+          data={plants}
+          keyExtractor={(item) => item.id}
+          renderItem={renderPlantItem}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -30,38 +216,73 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#F4F7F4",
   },
-  content: {
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 16,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2F1E7",
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#1B4332",
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    color: "#52796F",
+    marginTop: 2,
+  },
+  addButton: {
+    backgroundColor: "#2D6A4F",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    shadowColor: "#1B4332",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  addButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  centerContainer: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 24,
+    paddingHorizontal: 32,
   },
-  badge: {
-    backgroundColor: "#E2F1E7",
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 20,
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: "#52796F",
+  },
+  emptyEmoji: {
+    fontSize: 64,
     marginBottom: 16,
   },
-  badgeText: {
-    color: "#2D6A4F",
-    fontWeight: "600",
-    fontSize: 14,
-  },
-  title: {
-    fontSize: 28,
+  emptyTitle: {
+    fontSize: 20,
     fontWeight: "700",
     color: "#1B4332",
     marginBottom: 8,
     textAlign: "center",
   },
-  subtitle: {
-    fontSize: 16,
+  emptySubtitle: {
+    fontSize: 15,
     color: "#52796F",
-    marginBottom: 32,
     textAlign: "center",
+    marginBottom: 24,
+    lineHeight: 22,
   },
-  button: {
+  emptyAddButton: {
     backgroundColor: "#2D6A4F",
     paddingHorizontal: 24,
     paddingVertical: 14,
@@ -69,12 +290,79 @@ const styles = StyleSheet.create({
     shadowColor: "#1B4332",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
-    shadowRadius: 8,
+    shadowRadius: 6,
     elevation: 4,
   },
-  buttonText: {
+  emptyAddButtonText: {
     color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  listContent: {
+    padding: 20,
+  },
+  plantCard: {
+    borderWidth: 2,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: "#1B4332",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  titleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    marginRight: 10,
+  },
+  plantEmoji: {
+    fontSize: 22,
+    marginRight: 10,
+  },
+  plantName: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1B4332",
+    flex: 1,
+  },
+  categoryBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  categoryBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  cardBody: {
+    marginBottom: 12,
+  },
+  intervalText: {
+    fontSize: 14,
+    color: "#52796F",
+    fontWeight: "500",
+  },
+  cardFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+  },
+  countdownPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  countdownPillText: {
+    fontSize: 13,
+    fontWeight: "700",
   },
 });
