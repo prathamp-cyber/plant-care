@@ -4,12 +4,12 @@ import {
   Text,
   View,
   TouchableOpacity,
-  SafeAreaView,
   StatusBar,
   FlatList,
   ActivityIndicator,
   Animated,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { getPlants, markAsWatered } from "../utils/storage";
 import { PLANT_LOOKUP } from "../data/plantLookup";
@@ -334,7 +334,7 @@ const styles = StyleSheet.create({
   centerContainer: {
     flex: 1,
     alignItems: "center",
-    justify.content: "center",
+    justifyContent: "center",
     paddingHorizontal: 32,
   },
   loadingText: {
@@ -393,7 +393,7 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justify.content: "space-between",
+    justifyContent: "space-between",
     marginBottom: 10,
   },
   titleContainer: {
@@ -432,7 +432,7 @@ const styles = StyleSheet.create({
   cardFooter: {
     flexDirection: "row",
     alignItems: "center",
-    justify.content: "space-between",
+    justifyContent: "space-between",
   },
   countdownPill: {
     paddingHorizontal: 12,

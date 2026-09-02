@@ -1,4 +1,4 @@
-import { getDb } from "./db";
+import { getDb, ensureDbReady } from "./db";
 
 /**
  * Format SQLite row into camelCase JavaScript plant object.
@@ -23,7 +23,7 @@ const formatPlantRow = (row) => {
  */
 export const getPlants = async () => {
   try {
-    const db = getDb();
+    const db = await ensureDbReady();
     const rows = await db.getAllAsync("SELECT * FROM plants ORDER BY name ASC");
     return rows.map(formatPlantRow);
   } catch (error) {
@@ -38,7 +38,7 @@ export const getPlants = async () => {
  */
 export const savePlants = async (plantsArray) => {
   try {
-    const db = getDb();
+    const db = await ensureDbReady();
     await db.execAsync("DELETE FROM plants");
     for (const plant of plantsArray) {
       await db.runAsync(
@@ -69,7 +69,7 @@ export const savePlants = async (plantsArray) => {
  */
 export const addPlant = async (plant) => {
   try {
-    const db = getDb();
+    const db = await ensureDbReady();
     await db.runAsync(
       `INSERT OR REPLACE INTO plants 
       (id, name, species, category, photo_uri, watering_interval_days, last_watered_date, next_water_date)
@@ -99,7 +99,7 @@ export const addPlant = async (plant) => {
  */
 export const deletePlant = async (id) => {
   try {
-    const db = getDb();
+    const db = await ensureDbReady();
     await db.runAsync("DELETE FROM watering_logs WHERE plant_id = ?", [id]);
     await db.runAsync("DELETE FROM plants WHERE id = ?", [id]);
     return await getPlants();
@@ -117,7 +117,7 @@ export const deletePlant = async (id) => {
  */
 export const markAsWatered = async (plantId) => {
   try {
-    const db = getDb();
+    const db = await ensureDbReady();
     const plantRow = await db.getFirstAsync("SELECT * FROM plants WHERE id = ?", [plantId]);
     if (!plantRow) {
       console.warn("Plant not found for markAsWatered:", plantId);
@@ -161,7 +161,7 @@ export const markAsWatered = async (plantId) => {
  */
 export const getWateringLogs = async (plantId) => {
   try {
-    const db = getDb();
+    const db = await ensureDbReady();
     return await db.getAllAsync(
       "SELECT * FROM watering_logs WHERE plant_id = ? ORDER BY watered_on DESC",
       [plantId]

@@ -5,7 +5,6 @@ import {
   View,
   TextInput,
   TouchableOpacity,
-  SafeAreaView,
   StatusBar,
   ScrollView,
   Modal,
@@ -13,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { PLANT_LOOKUP } from "../data/plantLookup";
 import { addPlant } from "../utils/storage";
 
