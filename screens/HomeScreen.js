@@ -32,19 +32,19 @@ export default function HomeScreen({ navigation }) {
   const [activeQuoteIndex, setActiveQuoteIndex] = useState(0);
   const carouselRef = useRef(null);
 
-  // Auto-scroll Carousel every 4.5 seconds
+  // Auto-scroll Carousel every 4.5 seconds smoothly using scrollToOffset
   useEffect(() => {
     const timer = setInterval(() => {
       setActiveQuoteIndex((prevIndex) => {
         const nextIndex = (prevIndex + 1) % HERO_QUOTES.length;
         if (carouselRef.current) {
           try {
-            carouselRef.current.scrollToIndex({
-              index: nextIndex,
+            carouselRef.current.scrollToOffset({
+              offset: nextIndex * SCREEN_WIDTH,
               animated: true,
             });
           } catch (e) {
-            // Ignore scrollToIndex edge case errors
+            // Ignore edge case scroll errors
           }
         }
         return nextIndex;
@@ -56,16 +56,17 @@ export default function HomeScreen({ navigation }) {
 
   const handleScrollEnd = (event) => {
     const contentOffset = event.nativeEvent.contentOffset.x;
-    const viewWidth = event.nativeEvent.layoutMeasurement.width;
-    if (viewWidth > 0) {
-      const index = Math.round(contentOffset / viewWidth);
-      setActiveQuoteIndex(index);
+    if (SCREEN_WIDTH > 0) {
+      const index = Math.round(contentOffset / SCREEN_WIDTH);
+      if (index >= 0 && index < HERO_QUOTES.length) {
+        setActiveQuoteIndex(index);
+      }
     }
   };
 
   const getItemLayout = (_, index) => ({
-    length: CAROUSEL_WIDTH,
-    offset: CAROUSEL_WIDTH * index,
+    length: SCREEN_WIDTH,
+    offset: SCREEN_WIDTH * index,
     index,
   });
 
@@ -324,6 +325,9 @@ export default function HomeScreen({ navigation }) {
           keyExtractor={(item) => item.id}
           horizontal
           pagingEnabled
+          snapToInterval={SCREEN_WIDTH}
+          snapToAlignment="center"
+          decelerationRate="fast"
           showsHorizontalScrollIndicator={false}
           onMomentumScrollEnd={handleScrollEnd}
           getItemLayout={getItemLayout}

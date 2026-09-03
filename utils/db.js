@@ -33,7 +33,8 @@ export const initDb = async () => {
           watering_interval_days INTEGER,
           last_watered_date TEXT,
           next_water_date TEXT,
-          notification_id TEXT
+          notification_id TEXT,
+          notification_ids TEXT
         );
 
         CREATE TABLE IF NOT EXISTS watering_logs (
@@ -44,10 +45,18 @@ export const initDb = async () => {
         );
       `);
 
-      // Safe migration for existing DB instances without notification_id
+      // Safe migrations for existing DB instances
       try {
         await db.execAsync(
           "ALTER TABLE plants ADD COLUMN notification_id TEXT;"
+        );
+      } catch (e) {
+        // Ignore error if column already exists
+      }
+
+      try {
+        await db.execAsync(
+          "ALTER TABLE plants ADD COLUMN notification_ids TEXT;"
         );
       } catch (e) {
         // Ignore error if column already exists

@@ -1,7 +1,7 @@
 import { getDb, ensureDbReady } from "./db";
 import {
-  schedulePlantNotification,
-  cancelPlantNotification,
+  schedulePlantNotifications,
+  cancelPlantNotifications,
 } from "./notifications";
 import {
   getTodayLocalDateString,
@@ -13,6 +13,18 @@ import {
  */
 const formatPlantRow = (row) => {
   if (!row) return null;
+
+  let notificationIds = [];
+  if (row.notification_ids) {
+    try {
+      notificationIds = JSON.parse(row.notification_ids);
+    } catch (e) {
+      notificationIds = [row.notification_ids];
+    }
+  } else if (row.notification_id) {
+    notificationIds = [row.notification_id];
+  }
+
   return {
     id: row.id,
     name: row.name,
@@ -23,6 +35,7 @@ const formatPlantRow = (row) => {
     lastWateredDate: row.last_watered_date,
     nextWaterDate: row.next_water_date,
     notificationId: row.notification_id,
+    notificationIds: notificationIds,
   };
 };
 
@@ -50,11 +63,12 @@ export const savePlants = async (plantsArray) => {
     const db = await ensureDbReady();
     await db.execAsync("DELETE FROM plants");
     for (const plant of plantsArray) {
-      const notifId = await schedulePlantNotification(plant);
+      const scheduledIds = await schedulePlantNotifications(plant);
+      const notifIdsJson = JSON.stringify(scheduledIds);
       await db.runAsync(
         `INSERT OR REPLACE INTO plants 
-        (id, name, species, category, photo_uri, watering_interval_days, last_watered_date, next_water_date, notification_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, name, species, category, photo_uri, watering_interval_days, last_watered_date, next_water_date, notification_id, notification_ids)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           plant.id,
           plant.name,
@@ -64,7 +78,8 @@ export const savePlants = async (plantsArray) => {
           plant.wateringIntervalDays || 7,
           plant.lastWateredDate || getTodayLocalDateString(),
           plant.nextWaterDate || addDaysToLocalDateString(plant.lastWateredDate, plant.wateringIntervalDays || 7),
-          notifId || plant.notificationId || null,
+          scheduledIds[0] || null,
+          notifIdsJson,
         ]
       );
     }
@@ -74,7 +89,7 @@ export const savePlants = async (plantsArray) => {
 };
 
 /**
- * Add a new plant object to SQLite database and schedule a local watering notification.
+ * Add a new plant object to SQLite database and schedule 3 local watering notifications.
  * @param {Object} plant 
  * @returns {Promise<Array>} Updated array of plant objects
  */
@@ -92,18 +107,20 @@ export const addPlant = async (plant) => {
       ? (plant.nextWaterDate.includes("T") ? plant.nextWaterDate.split("T")[0] : plant.nextWaterDate)
       : addDaysToLocalDateString(lastWatered, interval);
 
-    // Schedule local notification for next_water_date at 9:00 AM
-    const notifId = await schedulePlantNotification({
+    // Schedule 3 local notifications (24h, 12h, 1h before next_water_date)
+    const scheduledIds = await schedulePlantNotifications({
       id: plantId,
       name: plant.name,
       nextWaterDate: nextWater,
+      notificationIds: plant.notificationIds,
       notificationId: plant.notificationId,
     });
+    const notifIdsJson = JSON.stringify(scheduledIds);
 
     await db.runAsync(
       `INSERT OR REPLACE INTO plants 
-      (id, name, species, category, photo_uri, watering_interval_days, last_watered_date, next_water_date, notification_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, name, species, category, photo_uri, watering_interval_days, last_watered_date, next_water_date, notification_id, notification_ids)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         plantId,
         plant.name,
@@ -113,7 +130,8 @@ export const addPlant = async (plant) => {
         interval,
         lastWatered,
         nextWater,
-        notifId,
+        scheduledIds[0] || null,
+        notifIdsJson,
       ]
     );
 
@@ -125,7 +143,7 @@ export const addPlant = async (plant) => {
 };
 
 /**
- * Delete a plant, cancel its scheduled notification, and remove watering logs from SQLite.
+ * Delete a plant, cancel all its scheduled notifications, and remove watering logs from SQLite.
  * @param {string} id 
  * @returns {Promise<Array>} Updated array of plant objects
  */
@@ -134,14 +152,17 @@ export const deletePlant = async (id) => {
     const db = await ensureDbReady();
     const strId = String(id);
 
-    // Retrieve notification ID before deletion
+    // Retrieve notification IDs before deletion
     const plantRow = await db.getFirstAsync(
-      "SELECT notification_id FROM plants WHERE id = ? OR CAST(id AS TEXT) = ?",
+      "SELECT notification_id, notification_ids FROM plants WHERE id = ? OR CAST(id AS TEXT) = ?",
       [strId, strId]
     );
 
-    if (plantRow && plantRow.notification_id) {
-      await cancelPlantNotification(plantRow.notification_id);
+    if (plantRow) {
+      const idsToCancel = plantRow.notification_ids || plantRow.notification_id;
+      if (idsToCancel) {
+        await cancelPlantNotifications(idsToCancel);
+      }
     }
 
     await db.runAsync("DELETE FROM watering_logs WHERE plant_id = ? OR CAST(plant_id AS TEXT) = ?", [strId, strId]);
@@ -156,7 +177,7 @@ export const deletePlant = async (id) => {
 
 /**
  * Mark a plant as watered today:
- * Updates last_watered_date (YYYY-MM-DD) and next_water_date (YYYY-MM-DD), reschedules watering notification, AND inserts a row into watering_logs.
+ * Updates last_watered_date (YYYY-MM-DD) and next_water_date (YYYY-MM-DD), reschedules 3 notifications, AND inserts a row into watering_logs.
  * @param {string} plantId 
  * @returns {Promise<Array>} Updated array of plant objects
  */
@@ -179,26 +200,28 @@ export const markAsWatered = async (plantId) => {
     const lastWateredDate = getTodayLocalDateString();
     const nextWaterDate = addDaysToLocalDateString(lastWateredDate, intervalDays);
 
-    // Schedule/replace local notification for newly calculated next_water_date (YYYY-MM-DD)
-    const newNotifId = await schedulePlantNotification({
+    // Schedule 3 local notifications for recalculated next_water_date
+    const newScheduledIds = await schedulePlantNotifications({
       id: strId,
       name: plantRow.name,
       nextWaterDate: nextWaterDate,
+      notificationIds: plantRow.notification_ids,
       notificationId: plantRow.notification_id,
     });
+    const newNotifIdsJson = JSON.stringify(newScheduledIds);
 
     console.log(`[markAsWatered] Plant: "${plantRow.name}" (ID: ${strId})`);
     console.log(`  - Interval: ${intervalDays} days`);
     console.log(`  - Last Watered (Local): ${lastWateredDate}`);
     console.log(`  - Next Water (Local): ${nextWaterDate}`);
-    console.log(`  - New Notification ID: ${newNotifId}`);
+    console.log(`  - New Scheduled Notification IDs (${newScheduledIds.length}):`, newScheduledIds);
 
-    // Update plant record in SQLite with local YYYY-MM-DD dates and notification ID
+    // Update plant record in SQLite with local dates and notification IDs JSON
     await db.runAsync(
       `UPDATE plants 
-       SET last_watered_date = ?, next_water_date = ?, notification_id = ? 
+       SET last_watered_date = ?, next_water_date = ?, notification_id = ?, notification_ids = ? 
        WHERE id = ? OR CAST(id AS TEXT) = ?`,
-      [lastWateredDate, nextWaterDate, newNotifId, strId, strId]
+      [lastWateredDate, nextWaterDate, newScheduledIds[0] || null, newNotifIdsJson, strId, strId]
     );
 
     // Insert entry into watering_logs table
