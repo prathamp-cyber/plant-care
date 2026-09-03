@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { PLANT_LOOKUP } from "../data/plantLookup";
 import { addPlant } from "../utils/storage";
+import { getTodayLocalDateString, addDaysToLocalDateString } from "../utils/dates";
 
 export default function AddPlantScreen({ navigation }) {
   const [selectedKey, setSelectedKey] = useState("Snake Plant"); // default selection
@@ -60,11 +61,8 @@ export default function AddPlantScreen({ navigation }) {
       intervalNum = PLANT_LOOKUP[selectedKey].interval;
     }
 
-    const now = new Date();
-    const todayIso = now.toISOString();
-
-    const nextDate = new Date(now.getTime() + intervalNum * 24 * 60 * 60 * 1000);
-    const nextWaterIso = nextDate.toISOString();
+    const todayLocal = getTodayLocalDateString();
+    const nextWaterLocal = addDaysToLocalDateString(todayLocal, intervalNum);
 
     const newPlant = {
       id: Date.now().toString(),
@@ -72,8 +70,8 @@ export default function AddPlantScreen({ navigation }) {
       species: isCustom ? "custom" : selectedKey,
       photoUri: null,
       wateringIntervalDays: intervalNum,
-      lastWateredDate: todayIso,
-      nextWaterDate: nextWaterIso,
+      lastWateredDate: todayLocal,
+      nextWaterDate: nextWaterLocal,
     };
 
     try {
@@ -403,7 +401,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
   },
-  /* Modal Styles */
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(15, 23, 42, 0.5)",

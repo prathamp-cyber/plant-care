@@ -8,11 +8,13 @@ import {
   FlatList,
   ActivityIndicator,
   Animated,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
-import { getPlants, markAsWatered } from "../utils/storage";
+import { getPlants, markAsWatered, deletePlant } from "../utils/storage";
 import { PLANT_LOOKUP } from "../data/plantLookup";
+import { calculateDaysLeft } from "../utils/dates";
 
 export default function HomeScreen({ navigation }) {
   const [plants, setPlants] = useState([]);
@@ -76,12 +78,12 @@ export default function HomeScreen({ navigation }) {
   const handleMarkAsWatered = async (plant) => {
     try {
       await markAsWatered(plant.id);
-      // Explicitly re-fetch fresh plant records directly from SQLite
+      // Re-fetch fresh plant records directly from SQLite
       const freshPlants = await getPlants();
       setPlants(freshPlants);
 
       const updatedPlant = freshPlants.find((p) => String(p.id) === String(plant.id));
-      const remainingDays = updatedPlant ? getDaysLeft(updatedPlant.nextWaterDate) : 0;
+      const remainingDays = updatedPlant ? calculateDaysLeft(updatedPlant.nextWaterDate) : 0;
 
       showToast(`💧 ${plant.name} marked as watered! (Next in ${remainingDays} days)`);
     } catch (error) {
@@ -90,24 +92,29 @@ export default function HomeScreen({ navigation }) {
   };
 
   /**
-   * Calculate live days left until next watering date.
+   * Handle plant deletion with native confirmation dialog.
    */
-  const getDaysLeft = (nextWaterDateIso) => {
-    if (!nextWaterDateIso) return 0;
-    const now = new Date();
-    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-    const targetDate = new Date(nextWaterDateIso);
-    if (isNaN(targetDate.getTime())) return 0;
-
-    const targetMidnight = new Date(
-      targetDate.getFullYear(),
-      targetDate.getMonth(),
-      targetDate.getDate()
+  const handleDeletePlant = (plant) => {
+    Alert.alert(
+      "Delete Plant",
+      `Delete "${plant.name}"? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const updatedList = await deletePlant(plant.id);
+              setPlants(updatedList);
+              showToast(`🗑️ ${plant.name} deleted`);
+            } catch (error) {
+              console.error("Failed to delete plant:", error);
+            }
+          },
+        },
+      ]
     );
-
-    const diffTime = targetMidnight.getTime() - todayMidnight.getTime();
-    return Math.round(diffTime / (1000 * 60 * 60 * 24));
   };
 
   /**
@@ -160,7 +167,7 @@ export default function HomeScreen({ navigation }) {
   };
 
   const renderPlantItem = ({ item }) => {
-    const daysLeft = getDaysLeft(item.nextWaterDate);
+    const daysLeft = calculateDaysLeft(item.nextWaterDate);
     const theme = getStatusTheme(daysLeft);
     const category = getCategory(item);
 
@@ -180,10 +187,21 @@ export default function HomeScreen({ navigation }) {
               {item.name}
             </Text>
           </View>
-          <View style={[styles.categoryBadge, { backgroundColor: theme.badgeBg }]}>
-            <Text style={[styles.categoryBadgeText, { color: theme.badgeText }]}>
-              {category}
-            </Text>
+
+          <View style={styles.headerRightActions}>
+            <View style={[styles.categoryBadge, { backgroundColor: theme.badgeBg }]}>
+              <Text style={[styles.categoryBadgeText, { color: theme.badgeText }]}>
+                {category}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.deleteIconButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              onPress={() => handleDeletePlant(item)}
+            >
+              <Text style={styles.deleteIconText}>🗑️</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -420,14 +438,25 @@ const styles = StyleSheet.create({
     color: "#1B4332",
     flex: 1,
   },
+  headerRightActions: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   categoryBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
+    marginRight: 8,
   },
   categoryBadgeText: {
     fontSize: 12,
     fontWeight: "700",
+  },
+  deleteIconButton: {
+    padding: 4,
+  },
+  deleteIconText: {
+    fontSize: 16,
   },
   cardBody: {
     marginBottom: 12,
