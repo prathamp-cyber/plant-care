@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -10,18 +10,64 @@ import {
   Animated,
   Alert,
   Image,
+  Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { getPlants, markAsWatered, deletePlant } from "../utils/storage";
 import { PLANT_LOOKUP } from "../data/plantLookup";
+import { HERO_QUOTES } from "../data/quotes";
 import { calculateDaysLeft } from "../utils/dates";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const CAROUSEL_WIDTH = SCREEN_WIDTH - 40; // 20px padding left and right
 
 export default function HomeScreen({ navigation }) {
   const [plants, setPlants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toastMessage, setToastMessage] = useState(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Carousel State & Ref
+  const [activeQuoteIndex, setActiveQuoteIndex] = useState(0);
+  const carouselRef = useRef(null);
+
+  // Auto-scroll Carousel every 4.5 seconds
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setActiveQuoteIndex((prevIndex) => {
+        const nextIndex = (prevIndex + 1) % HERO_QUOTES.length;
+        if (carouselRef.current) {
+          try {
+            carouselRef.current.scrollToIndex({
+              index: nextIndex,
+              animated: true,
+            });
+          } catch (e) {
+            // Ignore scrollToIndex edge case errors
+          }
+        }
+        return nextIndex;
+      });
+    }, 4500);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  const handleScrollEnd = (event) => {
+    const contentOffset = event.nativeEvent.contentOffset.x;
+    const viewWidth = event.nativeEvent.layoutMeasurement.width;
+    if (viewWidth > 0) {
+      const index = Math.round(contentOffset / viewWidth);
+      setActiveQuoteIndex(index);
+    }
+  };
+
+  const getItemLayout = (_, index) => ({
+    length: CAROUSEL_WIDTH,
+    offset: CAROUSEL_WIDTH * index,
+    index,
+  });
 
   // Fetch all plants from storage whenever screen comes into focus
   useFocusEffect(
@@ -270,6 +316,45 @@ export default function HomeScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
+      {/* Hero Carousel Section */}
+      <View style={styles.carouselSection}>
+        <FlatList
+          ref={carouselRef}
+          data={HERO_QUOTES}
+          keyExtractor={(item) => item.id}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={handleScrollEnd}
+          getItemLayout={getItemLayout}
+          renderItem={({ item }) => (
+            <View style={[styles.carouselCard, { backgroundColor: item.bgColor }]}>
+              <View style={styles.carouselHeaderRow}>
+                <Text style={styles.carouselQuoteMark}>“</Text>
+                <Text style={styles.carouselEmoji}>{item.emoji}</Text>
+              </View>
+              <Text style={styles.carouselQuoteText}>{item.quote}</Text>
+              <Text style={[styles.carouselAuthorText, { color: item.accentColor }]}>
+                — {item.author}
+              </Text>
+            </View>
+          )}
+        />
+
+        {/* Carousel Pagination Dots */}
+        <View style={styles.paginationContainer}>
+          {HERO_QUOTES.map((_, idx) => (
+            <View
+              key={idx}
+              style={[
+                styles.paginationDot,
+                activeQuoteIndex === idx && styles.paginationDotActive,
+              ]}
+            />
+          ))}
+        </View>
+      </View>
+
       {/* Main Content Area */}
       {loading ? (
         <View style={styles.centerContainer}>
@@ -370,6 +455,71 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
+  carouselSection: {
+    paddingVertical: 16,
+    alignItems: "center",
+  },
+  carouselCard: {
+    width: CAROUSEL_WIDTH,
+    marginHorizontal: 20,
+    borderRadius: 16,
+    padding: 20,
+    justifyContent: "space-between",
+    minHeight: 130,
+    shadowColor: "#1B4332",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  carouselHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  carouselQuoteMark: {
+    fontSize: 28,
+    color: "rgba(255, 255, 255, 0.4)",
+    fontWeight: "800",
+    lineHeight: 28,
+  },
+  carouselEmoji: {
+    fontSize: 22,
+  },
+  carouselQuoteText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#FFFFFF",
+    lineHeight: 22,
+    fontStyle: "italic",
+    marginBottom: 8,
+  },
+  carouselAuthorText: {
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "right",
+    letterSpacing: 0.5,
+  },
+  paginationContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 10,
+  },
+  paginationDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#CBD5E1",
+    marginHorizontal: 4,
+  },
+  paginationDotActive: {
+    width: 18,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#2D6A4F",
+  },
   centerContainer: {
     flex: 1,
     alignItems: "center",
@@ -431,7 +581,8 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   listContent: {
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 24,
   },
   plantCard: {
     borderWidth: 2,
