@@ -1,7 +1,19 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 
-// Configure default in-app notification behavior
+/**
+ * LOCAL NOTIFICATIONS ONLY MODULE
+ * 
+ * Note: This module exclusively uses local scheduled notification APIs:
+ * - requestPermissionsAsync / getPermissionsAsync
+ * - scheduleNotificationAsync
+ * - cancelScheduledNotificationAsync
+ * 
+ * Remote push notification tokens (getExpoPushTokenAsync, push token listeners) 
+ * are NOT used, ensuring 100% compatibility with Expo Go.
+ */
+
+// Configure default local in-app notification alert & sound behavior
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -11,7 +23,7 @@ Notifications.setNotificationHandler({
 });
 
 /**
- * Request notification permissions from the user.
+ * Request local notification permissions from the user.
  * @returns {Promise<boolean>} True if granted, false otherwise.
  */
 export const requestNotificationPermissions = async () => {
@@ -25,7 +37,7 @@ export const requestNotificationPermissions = async () => {
     }
 
     if (finalStatus !== "granted") {
-      console.log("Notification permissions not granted.");
+      console.log("Local notification permissions not granted.");
       return false;
     }
 
@@ -40,22 +52,22 @@ export const requestNotificationPermissions = async () => {
 
     return true;
   } catch (error) {
-    console.error("Error requesting notification permissions:", error);
+    console.error("Error requesting local notification permissions:", error);
     return false;
   }
 };
 
 /**
  * Schedule a local notification for a plant at 9:00 AM on its next_water_date.
- * Automatically cancels any existing notification for the same plant.
+ * Automatically cancels any existing local notification for the same plant.
  * @param {Object} plant { id, name, nextWaterDate, notificationId }
- * @returns {Promise<string|null>} New notification ID string or null if failed.
+ * @returns {Promise<string|null>} New local notification ID string or null if failed.
  */
 export const schedulePlantNotification = async (plant) => {
   try {
     if (!plant || !plant.nextWaterDate) return null;
 
-    // Cancel existing notification for this plant if present
+    // Cancel existing local notification for this plant if present
     if (plant.notificationId) {
       await cancelPlantNotification(plant.notificationId);
     }
@@ -97,25 +109,25 @@ export const schedulePlantNotification = async (plant) => {
     });
 
     console.log(
-      `[Notifications] Scheduled for "${plant.name}" (ID: ${notificationId}) at ${scheduledTime.toLocaleString()}`
+      `[Local Notifications] Scheduled for "${plant.name}" (ID: ${notificationId}) at ${scheduledTime.toLocaleString()}`
     );
     return notificationId;
   } catch (error) {
-    console.error("Error scheduling plant notification:", error);
+    console.error("Error scheduling local plant notification:", error);
     return null;
   }
 };
 
 /**
- * Cancel a previously scheduled notification by its ID.
+ * Cancel a previously scheduled local notification by its ID.
  * @param {string} notificationId 
  */
 export const cancelPlantNotification = async (notificationId) => {
   try {
     if (!notificationId) return;
     await Notifications.cancelScheduledNotificationAsync(notificationId);
-    console.log(`[Notifications] Cancelled notification ID: ${notificationId}`);
+    console.log(`[Local Notifications] Cancelled notification ID: ${notificationId}`);
   } catch (error) {
-    console.error("Error cancelling plant notification:", error);
+    console.error("Error cancelling local plant notification:", error);
   }
 };
