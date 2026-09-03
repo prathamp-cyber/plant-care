@@ -274,22 +274,24 @@ export default function HomeScreen({ navigation }) {
       {loading ? (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color="#2D6A4F" />
-          <Text style={styles.loadingText}>Loading your plants...</Text>
+          <Text style={styles.loadingText}>Loading your garden...</Text>
         </View>
       ) : plants.length === 0 ? (
         <View style={styles.centerContainer}>
-          <Text style={styles.emptyEmoji}>🌱</Text>
-          <Text style={styles.emptyTitle}>No plants added yet</Text>
-          <Text style={styles.emptySubtitle}>
-            Tap + to add your first indoor or farm plant!
-          </Text>
-          <TouchableOpacity
-            style={styles.emptyAddButton}
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate("AddPlant")}
-          >
-            <Text style={styles.emptyAddButtonText}>+ Add First Plant</Text>
-          </TouchableOpacity>
+          <View style={styles.emptyCardContainer}>
+            <Text style={styles.emptyEmoji}>🌿</Text>
+            <Text style={styles.emptyTitle}>No plants added yet</Text>
+            <Text style={styles.emptySubtitle}>
+              Tap + to add your first plant and stay on top of watering schedules!
+            </Text>
+            <TouchableOpacity
+              style={styles.emptyAddButton}
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate("AddPlant")}
+            >
+              <Text style={styles.emptyAddButtonText}>+ Add First Plant</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       ) : (
         <FlatList
@@ -372,19 +374,34 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 32,
+    paddingHorizontal: 24,
   },
   loadingText: {
     marginTop: 12,
-    fontSize: 14,
+    fontSize: 15,
+    fontWeight: "500",
     color: "#52796F",
+  },
+  emptyCardContainer: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 32,
+    alignItems: "center",
+    width: "100%",
+    borderWidth: 1.5,
+    borderColor: "#E2F1E7",
+    shadowColor: "#1B4332",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
   },
   emptyEmoji: {
     fontSize: 64,
     marginBottom: 16,
   },
   emptyTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "700",
     color: "#1B4332",
     marginBottom: 8,
@@ -399,7 +416,7 @@ const styles = StyleSheet.create({
   },
   emptyAddButton: {
     backgroundColor: "#2D6A4F",
-    paddingHorizontal: 24,
+    paddingHorizontal: 28,
     paddingVertical: 14,
     borderRadius: 12,
     shadowColor: "#1B4332",
