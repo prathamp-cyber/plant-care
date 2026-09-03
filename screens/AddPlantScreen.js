@@ -11,8 +11,10 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import * as ImagePicker from "expo-image-picker";
 import { PLANT_LOOKUP } from "../data/plantLookup";
 import { addPlant } from "../utils/storage";
 import { getTodayLocalDateString, addDaysToLocalDateString } from "../utils/dates";
@@ -21,6 +23,7 @@ export default function AddPlantScreen({ navigation }) {
   const [selectedKey, setSelectedKey] = useState("Snake Plant"); // default selection
   const [customName, setCustomName] = useState("");
   const [customInterval, setCustomInterval] = useState("7");
+  const [photoUri, setPhotoUri] = useState(null);
   const [isPickerVisible, setIsPickerVisible] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -38,6 +41,77 @@ export default function AddPlantScreen({ navigation }) {
     setSelectedKey(key);
     setErrorMsg("");
     setIsPickerVisible(false);
+  };
+
+  /**
+   * Launch Camera to capture photo
+   */
+  const handleLaunchCamera = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission Needed",
+          "Camera access is required to take a plant photo. You can still save your plant without a photo."
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setPhotoUri(result.assets[0].uri);
+      }
+    } catch (err) {
+      console.error("Camera error:", err);
+      Alert.alert("Error", "Could not access camera.");
+    }
+  };
+
+  /**
+   * Launch Media Library to pick photo
+   */
+  const handleLaunchLibrary = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission Needed",
+          "Photo library access is required to select an image. You can still save your plant without a photo."
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setPhotoUri(result.assets[0].uri);
+      }
+    } catch (err) {
+      console.error("Gallery error:", err);
+      Alert.alert("Error", "Could not access photo library.");
+    }
+  };
+
+  /**
+   * Show Photo Source selection dialog (Camera vs Library)
+   */
+  const handlePhotoOptions = () => {
+    Alert.alert("Plant Photo", "Choose photo source:", [
+      { text: "📷 Take Photo", onPress: handleLaunchCamera },
+      { text: "🖼️ Choose from Gallery", onPress: handleLaunchLibrary },
+      { text: "Cancel", style: "cancel" },
+    ]);
   };
 
   const handleSave = async () => {
@@ -68,7 +142,7 @@ export default function AddPlantScreen({ navigation }) {
       id: Date.now().toString(),
       name: plantName,
       species: isCustom ? "custom" : selectedKey,
-      photoUri: null,
+      photoUri: photoUri || null,
       wateringIntervalDays: intervalNum,
       lastWateredDate: todayLocal,
       nextWaterDate: nextWaterLocal,
@@ -113,6 +187,39 @@ export default function AddPlantScreen({ navigation }) {
               <Text style={styles.pickerButtonText}>{getSelectedLabel()}</Text>
               <Text style={styles.pickerArrow}>▼</Text>
             </TouchableOpacity>
+          </View>
+
+          {/* Photo Attachment Field */}
+          <View style={styles.fieldContainer}>
+            <Text style={styles.label}>Plant Photo (Optional)</Text>
+            {photoUri ? (
+              <View style={styles.photoPreviewCard}>
+                <Image source={{ uri: photoUri }} style={styles.photoPreviewImage} />
+                <View style={styles.photoActionRow}>
+                  <TouchableOpacity
+                    style={styles.changePhotoButton}
+                    onPress={handlePhotoOptions}
+                  >
+                    <Text style={styles.changePhotoText}>📷 Change</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.removePhotoButton}
+                    onPress={() => setPhotoUri(null)}
+                  >
+                    <Text style={styles.removePhotoText}>❌ Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.addPhotoButton}
+                activeOpacity={0.8}
+                onPress={handlePhotoOptions}
+              >
+                <Text style={styles.addPhotoIcon}>📷</Text>
+                <Text style={styles.addPhotoText}>Add Photo (Camera or Gallery)</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Preset Plant Details Card */}
@@ -329,6 +436,65 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#52796F",
     marginLeft: 8,
+  },
+  addPhotoButton: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#D8E2DC",
+    borderStyle: "dashed",
+    borderRadius: 12,
+    paddingVertical: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addPhotoIcon: {
+    fontSize: 28,
+    marginBottom: 6,
+  },
+  addPhotoText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#2D6A4F",
+  },
+  photoPreviewCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#D8E2DC",
+  },
+  photoPreviewImage: {
+    width: "100%",
+    height: 180,
+    resizeMode: "cover",
+  },
+  photoActionRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    padding: 10,
+    backgroundColor: "#F8FAFC",
+  },
+  changePhotoButton: {
+    backgroundColor: "#E2F1E7",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  changePhotoText: {
+    color: "#1B4332",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  removePhotoButton: {
+    backgroundColor: "#FEE2E2",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  removePhotoText: {
+    color: "#991B1B",
+    fontSize: 13,
+    fontWeight: "600",
   },
   infoCard: {
     backgroundColor: "#E2F1E7",

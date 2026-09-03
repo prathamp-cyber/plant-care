@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Animated,
   Alert,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
@@ -178,11 +179,21 @@ export default function HomeScreen({ navigation }) {
           { borderColor: theme.borderColor, backgroundColor: theme.cardBg },
         ]}
       >
+        {/* Render Photo if attached */}
+        {item.photoUri ? (
+          <View style={styles.cardImageContainer}>
+            <Image source={{ uri: item.photoUri }} style={styles.cardPlantImage} />
+          </View>
+        ) : null}
+
         <View style={styles.cardHeader}>
           <View style={styles.titleContainer}>
-            <Text style={styles.plantEmoji}>
-              {category === "Farm" ? "🌾" : category === "Custom" ? "✨" : "🪴"}
-            </Text>
+            {/* Show Emoji placeholder icon if no photo exists */}
+            {!item.photoUri && (
+              <Text style={styles.plantEmoji}>
+                {category === "Farm" ? "🌾" : category === "Custom" ? "✨" : "🪴"}
+              </Text>
+            )}
             <Text style={styles.plantName} numberOfLines={1}>
               {item.name}
             </Text>
@@ -415,6 +426,19 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 6,
     elevation: 2,
+    overflow: "hidden",
+  },
+  cardImageContainer: {
+    marginHorizontal: -16,
+    marginTop: -16,
+    marginBottom: 14,
+    height: 160,
+    backgroundColor: "#E2F1E7",
+  },
+  cardPlantImage: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
   },
   cardHeader: {
     flexDirection: "row",
