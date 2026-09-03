@@ -32,7 +32,8 @@ export const initDb = async () => {
           photo_uri TEXT,
           watering_interval_days INTEGER,
           last_watered_date TEXT,
-          next_water_date TEXT
+          next_water_date TEXT,
+          notification_id TEXT
         );
 
         CREATE TABLE IF NOT EXISTS watering_logs (
@@ -42,6 +43,16 @@ export const initDb = async () => {
           FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE
         );
       `);
+
+      // Safe migration for existing DB instances without notification_id
+      try {
+        await db.execAsync(
+          "ALTER TABLE plants ADD COLUMN notification_id TEXT;"
+        );
+      } catch (e) {
+        // Ignore error if column already exists
+      }
+
       return db;
     })();
   }

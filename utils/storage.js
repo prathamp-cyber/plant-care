@@ -1,4 +1,8 @@
 import { getDb, ensureDbReady } from "./db";
+import {
+  schedulePlantNotification,
+  cancelPlantNotification,
+} from "./notifications";
 
 /**
  * Format SQLite row into camelCase JavaScript plant object.
@@ -14,6 +18,7 @@ const formatPlantRow = (row) => {
     wateringIntervalDays: row.watering_interval_days,
     lastWateredDate: row.last_watered_date,
     nextWaterDate: row.next_water_date,
+    notificationId: row.notification_id,
   };
 };
 
@@ -41,10 +46,11 @@ export const savePlants = async (plantsArray) => {
     const db = await ensureDbReady();
     await db.execAsync("DELETE FROM plants");
     for (const plant of plantsArray) {
+      const notifId = await schedulePlantNotification(plant);
       await db.runAsync(
         `INSERT OR REPLACE INTO plants 
-        (id, name, species, category, photo_uri, watering_interval_days, last_watered_date, next_water_date)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, name, species, category, photo_uri, watering_interval_days, last_watered_date, next_water_date, notification_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           plant.id,
           plant.name,
@@ -54,6 +60,7 @@ export const savePlants = async (plantsArray) => {
           plant.wateringIntervalDays || 7,
           plant.lastWateredDate || null,
           plant.nextWaterDate || null,
+          notifId || plant.notificationId || null,
         ]
       );
     }
@@ -63,19 +70,29 @@ export const savePlants = async (plantsArray) => {
 };
 
 /**
- * Add a new plant object to SQLite database.
+ * Add a new plant object to SQLite database and schedule a local watering notification.
  * @param {Object} plant 
  * @returns {Promise<Array>} Updated array of plant objects
  */
 export const addPlant = async (plant) => {
   try {
     const db = await ensureDbReady();
+    const plantId = plant.id || Date.now().toString();
+
+    // Schedule notification for next_water_date at 9:00 AM
+    const notifId = await schedulePlantNotification({
+      id: plantId,
+      name: plant.name,
+      nextWaterDate: plant.nextWaterDate,
+      notificationId: plant.notificationId,
+    });
+
     await db.runAsync(
       `INSERT OR REPLACE INTO plants 
-      (id, name, species, category, photo_uri, watering_interval_days, last_watered_date, next_water_date)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, name, species, category, photo_uri, watering_interval_days, last_watered_date, next_water_date, notification_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        plant.id || Date.now().toString(),
+        plantId,
         plant.name,
         plant.species || null,
         plant.category || null,
@@ -83,8 +100,10 @@ export const addPlant = async (plant) => {
         plant.wateringIntervalDays || 7,
         plant.lastWateredDate || new Date().toISOString(),
         plant.nextWaterDate || new Date().toISOString(),
+        notifId,
       ]
     );
+
     return await getPlants();
   } catch (error) {
     console.error("Error adding plant to SQLite:", error);
@@ -93,15 +112,28 @@ export const addPlant = async (plant) => {
 };
 
 /**
- * Delete a plant and its associated watering logs from SQLite.
+ * Delete a plant, cancel its scheduled notification, and remove watering logs from SQLite.
  * @param {string} id 
  * @returns {Promise<Array>} Updated array of plant objects
  */
 export const deletePlant = async (id) => {
   try {
     const db = await ensureDbReady();
-    await db.runAsync("DELETE FROM watering_logs WHERE plant_id = ?", [id]);
-    await db.runAsync("DELETE FROM plants WHERE id = ?", [id]);
+    const strId = String(id);
+
+    // Retrieve notification ID before deletion
+    const plantRow = await db.getFirstAsync(
+      "SELECT notification_id FROM plants WHERE id = ? OR CAST(id AS TEXT) = ?",
+      [strId, strId]
+    );
+
+    if (plantRow && plantRow.notification_id) {
+      await cancelPlantNotification(plantRow.notification_id);
+    }
+
+    await db.runAsync("DELETE FROM watering_logs WHERE plant_id = ? OR CAST(plant_id AS TEXT) = ?", [strId, strId]);
+    await db.runAsync("DELETE FROM plants WHERE id = ? OR CAST(id AS TEXT) = ?", [strId, strId]);
+
     return await getPlants();
   } catch (error) {
     console.error("Error deleting plant from SQLite:", error);
@@ -111,7 +143,7 @@ export const deletePlant = async (id) => {
 
 /**
  * Mark a plant as watered today:
- * Updates last_watered_date and next_water_date on the plant AND inserts a row into watering_logs.
+ * Updates last_watered_date and next_water_date, reschedules watering notification, AND inserts a row into watering_logs.
  * @param {string} plantId 
  * @returns {Promise<Array>} Updated array of plant objects
  */
@@ -119,8 +151,7 @@ export const markAsWatered = async (plantId) => {
   try {
     const db = await ensureDbReady();
     const strId = String(plantId);
-    
-    // Find plant record by ID matching both text and numeric types
+
     const plantRow = await db.getFirstAsync(
       "SELECT * FROM plants WHERE id = ? OR CAST(id AS TEXT) = ?",
       [strId, strId]
@@ -138,17 +169,26 @@ export const markAsWatered = async (plantId) => {
     const nextDate = new Date(now.getTime() + intervalDays * 24 * 60 * 60 * 1000);
     const nextWaterDate = nextDate.toISOString();
 
+    // Schedule/replace notification for newly calculated next_water_date
+    const newNotifId = await schedulePlantNotification({
+      id: strId,
+      name: plantRow.name,
+      nextWaterDate: nextWaterDate,
+      notificationId: plantRow.notification_id,
+    });
+
     console.log(`[markAsWatered] Plant: "${plantRow.name}" (ID: ${strId})`);
     console.log(`  - Interval: ${intervalDays} days`);
     console.log(`  - Last Watered: ${lastWateredDate}`);
     console.log(`  - Recalculated Next Water: ${nextWaterDate}`);
+    console.log(`  - New Notification ID: ${newNotifId}`);
 
-    // Update plant record in SQLite
+    // Update plant record in SQLite with new dates and notification ID
     await db.runAsync(
       `UPDATE plants 
-       SET last_watered_date = ?, next_water_date = ? 
+       SET last_watered_date = ?, next_water_date = ?, notification_id = ? 
        WHERE id = ? OR CAST(id AS TEXT) = ?`,
-      [lastWateredDate, nextWaterDate, strId, strId]
+      [lastWateredDate, nextWaterDate, newNotifId, strId, strId]
     );
 
     // Insert entry into watering_logs table
@@ -159,7 +199,6 @@ export const markAsWatered = async (plantId) => {
       [logId, strId, lastWateredDate]
     );
 
-    // Fresh re-fetch from database to guarantee non-stale state
     const freshPlants = await getPlants();
     return freshPlants;
   } catch (error) {
@@ -176,9 +215,10 @@ export const markAsWatered = async (plantId) => {
 export const getWateringLogs = async (plantId) => {
   try {
     const db = await ensureDbReady();
+    const strId = String(plantId);
     return await db.getAllAsync(
-      "SELECT * FROM watering_logs WHERE plant_id = ? ORDER BY watered_on DESC",
-      [plantId]
+      "SELECT * FROM watering_logs WHERE plant_id = ? OR CAST(plant_id AS TEXT) = ? ORDER BY watered_on DESC",
+      [strId, strId]
     );
   } catch (error) {
     console.error("Error getting watering logs from SQLite:", error);

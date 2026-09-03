@@ -4,14 +4,22 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import HomeScreen from "./screens/HomeScreen";
 import AddPlantScreen from "./screens/AddPlantScreen";
 import { initDb } from "./utils/db";
+import { requestNotificationPermissions } from "./utils/notifications";
 
 const Stack = createNativeStackNavigator();
 
 export default function App() {
   useEffect(() => {
-    initDb().catch((err) =>
-      console.error("Failed to initialize SQLite database:", err)
-    );
+    const setupApp = async () => {
+      try {
+        await initDb();
+        await requestNotificationPermissions();
+      } catch (err) {
+        console.error("Error setting up database or notifications:", err);
+      }
+    };
+
+    setupApp();
   }, []);
 
   return (
